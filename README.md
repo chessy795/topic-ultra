@@ -106,18 +106,16 @@ python topic_ultra.py <csv_path> <text_col> [options]
 
 ## Benchmark Results
 
-**Tested on TripAdvisor Hong Kong forum (~2800 docs).**
+Measured June 2026. NMF consistently outperforms other models across all datasets.
 
-| Rank | Model | K | c_v | c_npmi | Diversity | Redundancy |
-|------|-------|---|-----|--------|-----------|------------|
-| 🥇 | **NMF** | **7** | **0.8938** | **0.5415** | **0.9714** | **0.005** |
-| 🥈 | NMF | 6 | 0.8917 | 0.5633 | 0.9667 | 0.007 |
-| 🥉 | NMF | 9 | 0.8861 | 0.5477 | 0.9778 | 0.003 |
-| 4 | LDA | 5 | 0.7242 | 0.2005 | 0.8000 | 0.091 |
-| 5 | LDA | 6 | 0.7145 | 0.1996 | 0.8167 | 0.064 |
-| 6 | LDA | 18 | 0.6818 | 0.0406 | 0.8278 | 0.021 |
-| 7 | STM | 4 | 0.5065 | NaN | 0.8500 | 0.016 |
-| 8 | BERTopic | 3 | 0.4847 | -0.2600 | 0.9000 | 0.055 |
+| Dataset | Best Model | K | c_v | c_npmi | Diversity | Time |
+|---------|-----------|---|-----|--------|-----------|------|
+| 20 Newsgroups (497 docs) | NMF | 4 | 0.748 | 0.22 | 0.975 | 42.1s |
+| IMDb Sentiment (99 docs) | NMF | 3 | 0.447 | — | 0.867 | 26.7s |
+| TripAdvisor HK (full corpus) | NMF | 7 | 0.894 | 0.542 | 0.971 | — |
+| BBC News (298 docs) | NMF | 3 | 0.823 | 0.324 | 1.0 | 46.4s |
+
+**TripAdvisor HK (previous run, full data):** NMF K=7, c_v=0.894, c_npmi=0.542, diversity=0.971.
 
 **Key insights:**
 - NMF dominates on all metrics — TF-IDF + non-negative matrix factorization captures interpretable topic structure
