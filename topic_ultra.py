@@ -39,12 +39,23 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 
 # --- Shared infrastructure (ultra_shared, optional) ---
+import sys as _sys
+_ultra_parent = str(Path(__file__).resolve().parent.parent)
+if _ultra_parent not in _sys.path:
+    _sys.path.insert(0, _ultra_parent)
+
 try:
     from ultra_shared.logging import setup_logging as _setup_logging
     from ultra_shared.config import load_config as _load_config
     HAS_ULTRA_SHARED = True
 except ImportError:
     HAS_ULTRA_SHARED = False
+
+try:
+    from ultra_shared.schema import build_manifest, new_doc, add_tool_section, write_docs_jsonl, write_manifest
+    HAS_SCHEMA = True
+except ImportError:
+    HAS_SCHEMA = False
 
 
 import shutil
@@ -1261,17 +1272,50 @@ def run(df, output_dir=None, k_values=None, do_bertopic=True, do_nmf=True, do_ld
     out_file = output / "topic_ultra_results.json"
     out_file.write_text(json.dumps(save, indent=2, default=str), encoding="utf-8")
     elapsed_total = round(time.time() - t_start, 2)
-    manifest = {
-        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "n_docs": n_docs,
-        "k_values": k_values,
-        "models_run": list(all_results.keys()),
-        "elapsed_sec": elapsed_total,
-        "best_model": comparison[0]["model"] if comparison else None,
-        "best_k": comparison[0]["k"] if comparison else None,
-        "best_cv": comparison[0]["cv"] if comparison else None,
-    }
-    (output / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+    if HAS_SCHEMA:
+        # Emit per-doc topic assignments from best model
+        best = comparison[0] if comparison else None
+        if best:
+            model_name = best["model"].lower()
+            model_result = all_results.get(model_name)
+            if model_result and "doc_topics" in model_result:
+                docs = []
+                for i, topic_id in enumerate(model_result["doc_topics"]):
+                    topic_words_list = model_result.get("topic_words", [])
+                    tw = topic_words_list[topic_id] if topic_id < len(topic_words_list) else []
+                    d = new_doc(doc_ids[i] if i < len(doc_ids) else str(i),
+                                texts[i] if i < len(texts) else "")
+                    add_tool_section(d, "topics", {
+                        "topic_id": int(topic_id),
+                        "topic_words": tw[:10],
+                        "model": model_name,
+                    })
+                    docs.append(d)
+                write_docs_jsonl(docs, str(output))
+
+        m = build_manifest(
+            "topic_ultra", n_docs, time.time() - t_start,
+            parameters={"k_values": k_values},
+            extra={"best_model": comparison[0]["model"] if comparison else None,
+                   "best_k": comparison[0]["k"] if comparison else None,
+                   "best_cv": comparison[0]["cv"] if comparison else None}
+        )
+        write_manifest(m, str(output))
+    else:
+        # Fallback: manual manifest
+        manifest = {
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "n_docs": n_docs,
+            "k_values": k_values,
+            "models_run": list(all_results.keys()),
+            "elapsed_sec": elapsed_total,
+            "best_model": comparison[0]["model"] if comparison else None,
+            "best_k": comparison[0]["k"] if comparison else None,
+            "best_cv": comparison[0]["cv"] if comparison else None,
+        }
+        (output / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
     print(f"\nTotal elapsed: {elapsed_total}s")
     print(f"Saved: {out_file}")
     return all_results
