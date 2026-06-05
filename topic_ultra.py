@@ -57,6 +57,8 @@ try:
 except ImportError:
     HAS_SCHEMA = False
 
+from ultra_shared.data import load_documents
+
 
 import shutil
 _DEFAULT_RSCRIPT = shutil.which("Rscript") or shutil.which("Rscript.exe")
@@ -1052,56 +1054,13 @@ def generate_interactive_topic_browser(all_results, output_dir="output_topic_ult
     print(f"  Saved interactive topic browser to viz/07_topic_browser.html")
 
 
-def load_documents(csv_path=None, text_column=None):
-    if csv_path and Path(csv_path).exists():
-        df = pd.read_csv(csv_path)
-        print(f"Loaded {len(df)} rows from {csv_path}")
-        if not text_column:
-            for c in ["text", "clean_text", "usertext", "content", "body", "postings"]:
-                if c in df.columns: text_column = c; break
-        if not text_column: text_column = df.columns[0]
-        if "doc_id" not in df.columns:
-            id_col = next((c for c in ["id", "doc_id", "ID"] if c in df.columns), None)
-            if id_col: df = df.rename(columns={id_col: "doc_id"})
-            else: df["doc_id"] = [f"doc_{i}" for i in range(len(df))]
-        if text_column != "clean_text": df = df.rename(columns={text_column: "clean_text"})
-        return df.fillna("")
-    else:
-        print("Using demo texts")
-        return pd.DataFrame({
-            "doc_id": [f"doc_{i}" for i in range(20)],
-            "clean_text": [
-                "I feel so lonely and isolated in this world. The darkness never seems to lift.",
-                "The hotel staff were incredibly helpful and friendly! Best vacation ever!",
-                "This is the worst experience I have ever had. Terrible service, horrible food.",
-                "I love this city, the food is amazing and the culture is vibrant and exciting.",
-                "Quarantine made everything feel hopeless and empty. I miss my family so much.",
-                "The vaccine gives me hope for a brighter future. Science will save us!",
-                "I hate waiting in long lines at the airport. Such a waste of precious time.",
-                "Meeting friends again fills me with pure joy! Life is beautiful once more.",
-                "The pandemic has been devastating for mental health. So much suffering everywhere.",
-                "Beautiful scenery and wonderful local cuisine made this trip unforgettable.",
-                "I am scared and anxious about what comes next. The uncertainty is crushing.",
-                "Everything is perfect, I could not be happier. Today was absolutely wonderful!",
-                "The research team published groundbreaking findings on climate change impacts.",
-                "Students struggle with online learning but adapt with resilience and creativity.",
-                "Mental health awareness has increased significantly in recent years.",
-                "Technology transforms how we communicate, work, and learn every day.",
-                "Community support programs help families during difficult economic times.",
-                "Sustainable energy solutions are essential for future generations.",
-                "Art therapy provides creative outlets for emotional expression and healing.",
-                "Volunteering at the shelter gave me a profound sense of purpose and belonging.",
-            ],
-        })
-
-
 def run(df, output_dir=None, k_values=None, do_bertopic=True, do_nmf=True, do_lda=True, do_stm=True,
         cache_embeddings=False, group_col=None):
     t_start = time.time()
     output = Path(output_dir or "output_topic_ultra")
     output.mkdir(exist_ok=True)
 
-    texts = df["clean_text"].astype(str).tolist()
+    texts = df["text"].astype(str).tolist()
     doc_ids = df["doc_id"].astype(str).tolist()
     n_docs = len(texts)
 
