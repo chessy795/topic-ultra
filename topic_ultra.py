@@ -57,6 +57,8 @@ try:
 except ImportError:
     HAS_SCHEMA = False
 
+from ultra_shared.report import ReportBuilder, THRESHOLDS
+
 from ultra_shared.data import load_documents
 
 
@@ -1274,6 +1276,90 @@ def run(df, output_dir=None, k_values=None, do_bertopic=True, do_nmf=True, do_ld
             "best_cv": comparison[0]["cv"] if comparison else None,
         }
         (output / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+    # === HTML Report ===
+    try:
+        best_entry = comparison[0] if comparison else None
+        report = ReportBuilder(
+            "Topic Analysis ULTRA",
+            dataset=str(output),
+            n_docs=n_docs,
+            elapsed_sec=elapsed_total,
+        )
+
+        if best_entry:
+            cv_val = best_entry["cv"]
+            cv_interp = "excellent" if cv_val >= 0.72 else "good" if cv_val >= 0.55 else "fair" if cv_val >= 0.4 else "poor"
+            div_val = best_entry["div"]
+            div_interp = "excellent" if div_val >= 0.9 else "good" if div_val >= 0.7 else "fair" if div_val >= 0.5 else "poor"
+            report.add_key_findings([
+                f"Best model: {best_entry['model']} K={best_entry['k']} (c_v={cv_val:.4f}, {cv_interp})",
+                f"Coherence (c_v={cv_val:.4f}): {cv_interp} per Röder et al. 2015",
+                f"Topic diversity={div_val:.4f}: {div_interp} per Dieng et al. 2020",
+            ])
+
+        report.add_rationale(
+            "K Selection",
+            f"Searched K={k_values[0]}-{k_values[-1]} across {len(k_values)} values. "
+            "Top-3 per model selected via Pareto front (max c_v, max diversity, min redundancy). "
+            "Final ranking by c_v. (Weston et al. 2023)",
+        )
+        report.add_rationale(
+            "Evaluation Metrics",
+            "c_v (Röder et al. 2015), c_npmi (Aletras & Stevenson 2013), "
+            "diversity (Dieng et al. 2020), redundancy (heuristic, lower is better).",
+        )
+
+        if best_entry:
+            report.add_metric("c_v", best_entry["cv"], thresholds=THRESHOLDS["c_v"])
+            report.add_metric("c_npmi", best_entry["cnpmi"], thresholds=THRESHOLDS["c_npmi"])
+            report.add_metric("diversity", best_entry["div"], thresholds=THRESHOLDS["diversity"])
+            report.add_metric("redundancy", best_entry["red"], thresholds=THRESHOLDS["redundancy"])
+
+        if comparison:
+            comp_df = pd.DataFrame(comparison[:10])
+            comp_df = comp_df.rename(columns={"cv": "c_v", "cnpmi": "c_npmi", "div": "diversity", "red": "redundancy"})
+            report.add_table(comp_df, title="Topic Model Comparison",
+                             hover_cols={"c_v": "Coherence (Röder et al. 2015)",
+                                         "c_npmi": "NPMI coherence (Aletras & Stevenson 2013)",
+                                         "diversity": "Unique word ratio (Dieng et al. 2020)",
+                                         "redundancy": "Topic overlap (lower is better)"})
+            report.set_csv_data(comp_df)
+
+        # Coherence vs K chart
+        try:
+            import plotly.graph_objects as go
+            fig_cv = go.Figure()
+            colors_map = {"nmf": "#2196F3", "lda": "#4CAF50", "stm": "#FF9800"}
+            for model_name in ["nmf", "lda", "stm"]:
+                data = all_results.get(model_name)
+                if not data or "results" not in data:
+                    continue
+                results = data["results"]
+                ks = [r["k"] for r in results]
+                cvs = [r.get("coherence_cv", {}).get("mean", 0) for r in results]
+                fig_cv.add_trace(go.Scatter(
+                    x=ks, y=cvs, mode="lines+markers", name=model_name.upper(),
+                    line=dict(color=colors_map.get(model_name, "#999")), marker=dict(size=6)))
+            bt = all_results.get("bertopic", {})
+            if bt and "error" not in bt:
+                fig_cv.add_trace(go.Scatter(
+                    x=[bt.get("n_topics", 3)], y=[bt.get("coherence_cv", {}).get("mean", 0)],
+                    mode="markers", name="BERTopic",
+                    marker=dict(size=12, color="#E91E63", symbol="star")))
+            fig_cv.update_layout(
+                xaxis_title="K (number of topics)", yaxis_title="c_v Coherence",
+                template="plotly_white", height=400,
+                title="Coherence vs K")
+            report.add_chart(fig_cv, title="Coherence vs K")
+        except ImportError:
+            pass
+
+        report.build(str(output / "report.html"))
+        report.build_csv(str(output / "raw_output.csv"))
+        print(f"  Saved report.html and raw_output.csv")
+    except Exception as e:
+        print(f"  [REPORT ERROR] {e}")
 
     print(f"\nTotal elapsed: {elapsed_total}s")
     print(f"Saved: {out_file}")
