@@ -1388,6 +1388,38 @@ def run(df, output_dir=None, k_values=None, do_bertopic=True, do_nmf=True, do_ld
                     ])
                     rb.add_table(topic_df, title=f"Topic Words (Best: {best['model']} K={best['k']})", expand_col="top_words")
 
+            # --- Representative documents per topic ---
+            best_model_name = best.get("model", "").lower() if best else ""
+            if best_model_name and best_model_name in all_results:
+                model_data = all_results[best_model_name]
+                # representative_docs is in results list, keyed by k
+                results_list = model_data.get("results", [])
+                best_k = best.get("k", 3) if best else 3
+                rep_docs = []
+                for r in results_list:
+                    if r.get("k") == best_k:
+                        rep_docs = r.get("representative_docs", [])
+                        break
+                if rep_docs:
+                    rep_rows = []
+                    for i, docs_list in enumerate(rep_docs):
+                        if isinstance(docs_list, list):
+                            for j, doc in enumerate(docs_list[:2]):
+                                rep_rows.append({
+                                    "topic_id": i,
+                                    "doc_index": j + 1,
+                                    "text": str(doc)[:200],
+                                })
+                        elif isinstance(docs_list, str):
+                            rep_rows.append({
+                                "topic_id": i,
+                                "doc_index": 1,
+                                "text": str(docs_list)[:200],
+                            })
+                    if rep_rows:
+                        rep_df = pd.DataFrame(rep_rows)
+                        rb.add_table(rep_df, title="Representative Documents per Topic", expand_col="text")
+
             rb.build(str(output / "report.html"))
             rb.build_csv(str(output / "raw_output.csv"))
             print(f"  Saved report.html and raw_output.csv")
