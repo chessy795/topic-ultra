@@ -1388,6 +1388,48 @@ def run(df, output_dir=None, k_values=None, do_bertopic=True, do_nmf=True, do_ld
                     ])
                     rb.add_table(topic_df, title=f"Topic Words (Best: {best['model']} K={best['k']})", expand_col="top_words")
 
+            # --- Topic prevalence chart + per-topic detail table ---
+            best_model_name = best.get("model", "").lower() if best else ""
+            if best_model_name and best_model_name in all_results:
+                model_data = all_results[best_model_name]
+                results_list = model_data.get("results", [])
+                best_k = best.get("k", 3) if best else 3
+                for r in results_list:
+                    if r.get("k") == best_k:
+                        td = r.get("topic_details", [])
+                        tp = r.get("topic_prevalence", [])
+                        cv_per_topic = r.get("coherence_cv", {}).get("per_topic", [])
+
+                        # Topic prevalence pie chart
+                        if td:
+                            labels = [f"T{t.get('topic_id', i)}" for i, t in enumerate(td)]
+                            sizes = [t.get("prevalence", 0) for t in td]
+                            if any(s > 0 for s in sizes):
+                                import plotly.graph_objects as go
+                                fig_prev = go.Figure(data=[go.Pie(
+                                    labels=labels, values=sizes, hole=0.3,
+                                    textinfo="label+percent",
+                                    marker_colors=px.colors.qualitative.Set2[:len(labels)]
+                                )])
+                                fig_prev.update_layout(title=f"Topic Prevalence (K={best_k})")
+                                rb.add_chart(fig_prev, title=f"Topic Prevalence (K={best_k})")
+
+                        # Per-topic detail table
+                        if td:
+                            detail_rows = []
+                            for i, t in enumerate(td):
+                                words = t.get("prob_words", [])
+                                detail_rows.append({
+                                    "topic_id": f"T{i}",
+                                    "n_docs": t.get("n_docs", 0),
+                                    "prevalence": round(t.get("prevalence", 0), 4),
+                                    "top_words": ", ".join(words[:5]) if words else "",
+                                    "c_v_per_topic": round(cv_per_topic[i], 4) if cv_per_topic and i < len(cv_per_topic) else "",
+                                })
+                            detail_df = pd.DataFrame(detail_rows)
+                            rb.add_table(detail_df, title=f"Topic Details (Best: {best['model']} K={best_k})", expand_col="top_words")
+                        break
+
             # --- Representative documents per topic ---
             best_model_name = best.get("model", "").lower() if best else ""
             if best_model_name and best_model_name in all_results:
